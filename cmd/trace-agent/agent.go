@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -26,20 +27,17 @@ const processStatsInterval = time.Minute
 
 // Agent struct holds all the sub-routines structs and make the data flow between them
 type Agent struct {
-	Receiver           *api.HTTPReceiver
-	Concentrator       *Concentrator
-	Blacklister        *filters.Blacklister
-	Replacer           *filters.Replacer
-	ScoreSampler       *Sampler
-	ErrorsScoreSampler *Sampler
-	PrioritySampler    *Sampler
-	ReservoirSampler   *reservoir.Sampler
-	EventExtractor     event.Extractor
-	TraceWriter        *writer.TraceWriter
-	ServiceWriter      *writer.ServiceWriter
-	StatsWriter        *writer.StatsWriter
-	ServiceExtractor   *TraceServiceExtractor
-	ServiceMapper      *ServiceMapper
+	Receiver         *api.HTTPReceiver
+	Concentrator     *Concentrator
+	Blacklister      *filters.Blacklister
+	Replacer         *filters.Replacer
+	ReservoirSampler *reservoir.Sampler
+	EventExtractor   event.Extractor
+	TraceWriter      *writer.TraceWriter
+	ServiceWriter    *writer.ServiceWriter
+	StatsWriter      *writer.StatsWriter
+	ServiceExtractor *TraceServiceExtractor
+	ServiceMapper    *ServiceMapper
 
 	// obfuscator is used to obfuscate sensitive data from various span
 	// tags based on their type.
@@ -108,16 +106,21 @@ func (a *Agent) handleTraceSamplingDecision(t *model.ProcessedTrace, sampled boo
 	tracePkg := writer.TracePackage{}
 
 	if sampled {
+		fmt.Println("### " + t.Root.Resource + " ###")
 		t.Sampled = sampled
 		tracePkg.Trace = t.Trace
+	} else {
+		fmt.Println("--- " + t.Root.Resource + " ---")
 	}
 
-	// NOTE: Events can be extracted from non-sampled traces.
-	tracePkg.Events = a.EventExtractor.Extract(*t)
+	/*
+		// NOTE: Events can be extracted from non-sampled traces.
+		tracePkg.Events = a.EventExtractor.Extract(*t)
 
-	if !tracePkg.Empty() {
-		a.tracePkgChan <- &tracePkg
-	}
+		if !tracePkg.Empty() {
+			a.tracePkgChan <- &tracePkg
+		}
+	*/
 }
 
 // Run starts routers routines and individual pieces then stop them when the exit order is received
@@ -140,9 +143,6 @@ func (a *Agent) Run() {
 	a.ServiceMapper.Start()
 	a.ServiceWriter.Start()
 	a.Concentrator.Start()
-	a.ScoreSampler.Run()
-	a.ErrorsScoreSampler.Run()
-	a.PrioritySampler.Run()
 
 	for {
 		select {
@@ -158,11 +158,9 @@ func (a *Agent) Run() {
 			a.Concentrator.Stop()
 			a.TraceWriter.Stop()
 			a.StatsWriter.Stop()
+			a.ReservoirSampler.Stop()
 			a.ServiceMapper.Stop()
 			a.ServiceWriter.Stop()
-			a.ScoreSampler.Stop()
-			a.ErrorsScoreSampler.Stop()
-			a.PrioritySampler.Stop()
 			return
 		}
 	}
