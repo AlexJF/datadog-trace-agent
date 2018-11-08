@@ -20,10 +20,10 @@ func (p spanHashSlice) Less(i, j int) bool { return p[i] < p[j] }
 func (p spanHashSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 func sortHashes(hashes []spanHash)         { sort.Sort(spanHashSlice(hashes)) }
 
-// computeSignatureWithRootAndEnv generates the signature of a trace knowing its root
+// ComputeSignatureWithRootAndEnv generates the signature of a trace knowing its root
 // Signature based on the hash of (env, service, name, resource, is_error) for the root, plus the set of
 // (env, service, name, is_error) of each span.
-func computeSignatureWithRootAndEnv(trace model.Trace, root *model.Span, env string) Signature {
+func ComputeSignatureWithRootAndEnv(trace model.Trace, root *model.Span, env string) Signature {
 	rootHash := computeRootHash(*root, env)
 	spanHashes := make([]spanHash, 0, len(trace))
 

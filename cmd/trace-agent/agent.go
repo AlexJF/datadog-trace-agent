@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/DataDog/datadog-trace-agent/sampler/reservoir"
 	log "github.com/cihub/seelog"
 
 	"github.com/DataDog/datadog-trace-agent/api"
@@ -32,6 +33,7 @@ type Agent struct {
 	ScoreSampler       *Sampler
 	ErrorsScoreSampler *Sampler
 	PrioritySampler    *Sampler
+	ReservoirSampler   *reservoir.Sampler
 	EventExtractor     event.Extractor
 	TraceWriter        *writer.TraceWriter
 	ServiceWriter      *writer.ServiceWriter
@@ -74,10 +76,8 @@ func NewAgent(ctx context.Context, conf *config.AgentConfig) *Agent {
 	)
 
 	obf := obfuscate.NewObfuscator(conf.Obfuscation)
-	ss := NewScoreSampler(conf)
-	ess := NewErrorsSampler(conf)
-	ps := NewPrioritySampler(conf, dynConf)
 	ee := eventExtractorFromConf(conf)
+	rs := reservoir.NewSampler(conf.MaxTPS)
 	se := NewTraceServiceExtractor(serviceChan)
 	sm := NewServiceMapper(serviceChan, filteredServiceChan)
 	tw := writer.NewTraceWriter(conf, tracePkgChan)
@@ -85,24 +85,38 @@ func NewAgent(ctx context.Context, conf *config.AgentConfig) *Agent {
 	svcW := writer.NewServiceWriter(conf, filteredServiceChan)
 
 	return &Agent{
-		Receiver:           r,
-		Concentrator:       c,
-		Blacklister:        filters.NewBlacklister(conf.Ignore["resource"]),
-		Replacer:           filters.NewReplacer(conf.ReplaceTags),
-		ScoreSampler:       ss,
-		ErrorsScoreSampler: ess,
-		PrioritySampler:    ps,
-		EventExtractor:     ee,
-		TraceWriter:        tw,
-		StatsWriter:        sw,
-		ServiceWriter:      svcW,
-		ServiceExtractor:   se,
-		ServiceMapper:      sm,
-		obfuscator:         obf,
-		tracePkgChan:       tracePkgChan,
-		conf:               conf,
-		dynConf:            dynConf,
-		ctx:                ctx,
+		Receiver:         r,
+		Concentrator:     c,
+		Blacklister:      filters.NewBlacklister(conf.Ignore["resource"]),
+		Replacer:         filters.NewReplacer(conf.ReplaceTags),
+		EventExtractor:   ee,
+		TraceWriter:      tw,
+		StatsWriter:      sw,
+		ServiceWriter:    svcW,
+		ServiceExtractor: se,
+		ServiceMapper:    sm,
+		ReservoirSampler: rs,
+		obfuscator:       obf,
+		tracePkgChan:     tracePkgChan,
+		conf:             conf,
+		dynConf:          dynConf,
+		ctx:              ctx,
+	}
+}
+
+func (a *Agent) handleTraceSamplingDecision(t *model.ProcessedTrace, sampled bool) {
+	tracePkg := writer.TracePackage{}
+
+	if sampled {
+		t.Sampled = sampled
+		tracePkg.Trace = t.Trace
+	}
+
+	// NOTE: Events can be extracted from non-sampled traces.
+	tracePkg.Events = a.EventExtractor.Extract(*t)
+
+	if !tracePkg.Empty() {
+		a.tracePkgChan <- &tracePkg
 	}
 }
 
@@ -122,6 +136,7 @@ func (a *Agent) Run() {
 	a.Receiver.Run()
 	a.TraceWriter.Start()
 	a.StatsWriter.Start()
+	a.ReservoirSampler.Start(a.handleTraceSamplingDecision)
 	a.ServiceMapper.Start()
 	a.ServiceWriter.Start()
 	a.Concentrator.Start()
@@ -246,44 +261,8 @@ func (a *Agent) Process(t model.Trace) {
 	if priority < 0 {
 		return
 	}
-	// Run both full trace sampling and transaction extraction in another goroutine.
-	go func(pt model.ProcessedTrace) {
-		defer watchdog.LogOnPanic()
 
-		tracePkg := writer.TracePackage{}
-
-		sampled, rate := a.sample(pt)
-
-		if sampled {
-			pt.Sampled = sampled
-			sampler.AddSampleRate(pt.Root, rate)
-			tracePkg.Trace = pt.Trace
-		}
-
-		// NOTE: Events can be extracted from non-sampled traces.
-		tracePkg.Events = a.EventExtractor.Extract(pt)
-
-		if !tracePkg.Empty() {
-			a.tracePkgChan <- &tracePkg
-		}
-	}(pt)
-}
-
-func (a *Agent) sample(pt model.ProcessedTrace) (sampled bool, rate float64) {
-	var sampledPriority, sampledScore bool
-	var ratePriority, rateScore float64
-
-	if _, ok := pt.GetSamplingPriority(); ok {
-		sampledPriority, ratePriority = a.PrioritySampler.Add(pt)
-	}
-
-	if traceContainsError(pt.Trace) {
-		sampledScore, rateScore = a.ErrorsScoreSampler.Add(pt)
-	} else {
-		sampledScore, rateScore = a.ScoreSampler.Add(pt)
-	}
-
-	return sampledScore || sampledPriority, sampler.CombineRates(ratePriority, rateScore)
+	a.ReservoirSampler.Sample(&pt)
 }
 
 // dieFunc is used by watchdog to kill the agent; replaced in tests.

@@ -1,42 +1,52 @@
-package sampler
+package reservoir
 
 import (
 	"sync"
 	"sync/atomic"
 
 	"github.com/DataDog/datadog-trace-agent/model"
+	"github.com/DataDog/datadog-trace-agent/sampler"
 )
 
 const maxMemorySize = uint64(100000000) // 100 MB
 
 type Reservoir struct {
-	slots      []*model.ProcessedTrace
-	traceCount uint64
+	Slots      []*model.ProcessedTrace
+	TraceCount uint64
 	shrinked   bool
 	size       uint64
 }
 
-func (r *Reservoir) Add(trace *model.ProcessedTrace) {
-	atomic.AddUint64(&r.traceCount, 1)
-	if r.slots[0] == nil {
-		r.slots[0] = trace
+func (r *Reservoir) Add(trace *model.ProcessedTrace) (droppedTrace *model.ProcessedTrace) {
+	atomic.AddUint64(&r.TraceCount, 1)
+	if r.Slots[0] == nil {
+		r.Slots[0] = trace
 		return
 	}
-	if r.slots[0].Root.TraceID < trace.Root.TraceID {
-		r.slots[0] = trace
+
+	if r.Slots[0].Root.TraceID < trace.Root.TraceID {
+		droppedTrace = r.Slots[0]
+		r.Slots[0] = trace
+
+		return
 	}
+
+	return trace
 }
 
 func newReservoir() *Reservoir {
 	return &Reservoir{
-		slots: make([]*model.ProcessedTrace, 1),
+		Slots: make([]*model.ProcessedTrace, 1),
 	}
 }
 
 type StratifiedReservoir struct {
+	onDropCb func(t *model.ProcessedTrace)
+	flusher  *Flusher
+
 	sync.RWMutex
-	reservoirs map[Signature]*Reservoir
-	newSig     chan Signature
+	reservoirs map[sampler.Signature]*Reservoir
+	newSig     chan sampler.Signature
 	size       uint64
 	limit      uint64
 	shrinked   bool // not thread safe
@@ -50,27 +60,31 @@ func (s *StratifiedReservoir) Shrink() {
 	s.shrinked = true
 }
 
-func newStratifiedReservoir() *StratifiedReservoir {
+func NewStratifiedReservoir() *StratifiedReservoir {
 	return &StratifiedReservoir{
-		reservoirs: make(map[Signature]*Reservoir, 2),
-		newSig:     make(chan Signature, 20),
+		reservoirs: make(map[sampler.Signature]*Reservoir, 2),
 		limit:      maxMemorySize,
 	}
 }
 
-func (s *StratifiedReservoir) AddToReservoir(sig Signature, trace *model.ProcessedTrace) {
+func (s *StratifiedReservoir) Init(flusher *Flusher, onDropCb func(t *model.ProcessedTrace)) {
+	s.flusher = flusher
+	s.onDropCb = onDropCb
+}
+
+func (s *StratifiedReservoir) Add(sig sampler.Signature, trace *model.ProcessedTrace) {
 	if s.shrinked {
-		sig = Signature(0)
+		sig = sampler.Signature(0)
 	}
 	s.RLock()
 	reservoir, ok := s.reservoirs[sig]
 	s.RUnlock()
 	if !ok {
-		s.newSig <- sig
-		if sig != Signature(0) && s.isFull() {
-			s.AddToReservoir(Signature(0), trace)
+		if sig != sampler.Signature(0) && s.isFull() {
+			s.Add(sampler.Signature(0), trace)
 			return
 		}
+		s.flusher.HandleNewSignature(sig)
 		traceSize := traceApproximateSize(trace)
 		reservoir = newReservoir()
 		reservoir.size = traceSize
@@ -83,7 +97,7 @@ func (s *StratifiedReservoir) AddToReservoir(sig Signature, trace *model.Process
 	reservoir.Add(trace)
 }
 
-func (s *StratifiedReservoir) FlushReservoir(sig Signature) *Reservoir {
+func (s *StratifiedReservoir) GetAndReset(sig sampler.Signature) *Reservoir {
 	s.RLock()
 	reservoir, ok := s.reservoirs[sig]
 	s.RUnlock()
@@ -92,7 +106,7 @@ func (s *StratifiedReservoir) FlushReservoir(sig Signature) *Reservoir {
 		return nil
 	}
 
-	isEmpty := atomic.LoadUint64(&reservoir.traceCount) == uint64(0)
+	isEmpty := atomic.LoadUint64(&reservoir.TraceCount) == uint64(0)
 	if isEmpty {
 		return nil
 	}
@@ -105,7 +119,7 @@ func (s *StratifiedReservoir) FlushReservoir(sig Signature) *Reservoir {
 	return reservoir
 }
 
-func (s *StratifiedReservoir) RemoveReservoir(sig Signature) {
+func (s *StratifiedReservoir) Remove(sig sampler.Signature) {
 	var size uint64
 	s.RLock()
 	reservoir, ok := s.reservoirs[sig]
