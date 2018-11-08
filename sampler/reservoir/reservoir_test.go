@@ -1,9 +1,10 @@
-package sampler
+package reservoir
 
 import (
 	"testing"
 
 	"github.com/DataDog/datadog-trace-agent/model"
+	"github.com/DataDog/datadog-trace-agent/sampler"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -16,36 +17,36 @@ func generateTrace(traceID int) *model.ProcessedTrace {
 func TestAddReservoir(t *testing.T) {
 	assert := assert.New(t)
 	reservoir := newReservoir()
-	assert.Equal(uint64(0), reservoir.traceCount)
-	assert.Nil(reservoir.slots[0])
+	assert.Equal(sampler.Signature(0), reservoir.TraceCount)
+	assert.Nil(reservoir.Slots[0])
 
 	testTrace := generateTrace(10)
 	reservoir.Add(testTrace)
-	assert.Equal(uint64(1), reservoir.traceCount)
-	assert.Equal(testTrace, reservoir.slots[0])
+	assert.Equal(sampler.Signature(1), reservoir.TraceCount)
+	assert.Equal(testTrace, reservoir.Slots[0])
 
 	maxTrace := generateTrace(20)
 	reservoir.Add(maxTrace)
-	assert.Equal(uint64(2), reservoir.traceCount)
-	assert.Equal(maxTrace, reservoir.slots[0])
+	assert.Equal(sampler.Signature(2), reservoir.TraceCount)
+	assert.Equal(maxTrace, reservoir.Slots[0])
 
 	maxIndex := 15
 	for i := 0; i < maxIndex; i++ {
 		reservoir.Add(generateTrace(i))
 	}
-	assert.Equal(uint64(maxIndex+2), reservoir.traceCount)
-	assert.Equal(maxTrace, reservoir.slots[0])
+	assert.Equal(sampler.Signature(maxIndex+2), reservoir.TraceCount)
+	assert.Equal(maxTrace, reservoir.Slots[0])
 }
 
 func TestAddFlush(t *testing.T) {
 	assert := assert.New(t)
-	s := newStratifiedReservoir()
+	s := NewStratifiedReservoir()
 
-	testSig := Signature(10)
+	testSig := sampler.Signature(10)
 	testTrace := generateTrace(6)
-	s.AddToReservoir(testSig, testTrace)
+	s.Add(testSig, testTrace)
 	originalReservoir, _ := s.reservoirs[testSig]
-	flushedReservoir := s.FlushReservoir(testSig)
+	flushedReservoir := s.GetAndReset(testSig)
 
 	assert.Equal(originalReservoir, flushedReservoir)
 	storedReservoir := s.reservoirs[testSig]
@@ -54,13 +55,13 @@ func TestAddFlush(t *testing.T) {
 
 func TestAddRemoveReservoir(t *testing.T) {
 	assert := assert.New(t)
-	s := newStratifiedReservoir()
+	s := NewStratifiedReservoir()
 
 	assert.Equal(0, len(s.reservoirs))
 
-	testSig := Signature(10)
-	s.AddToReservoir(testSig, generateTrace(5))
+	testSig := sampler.Signature(10)
+	s.Add(testSig, generateTrace(5))
 	assert.Equal(1, len(s.reservoirs))
-	s.RemoveReservoir(testSig)
+	s.Remove(testSig)
 	assert.Equal(0, len(s.reservoirs))
 }
