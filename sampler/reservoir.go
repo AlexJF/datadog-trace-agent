@@ -7,6 +7,8 @@ import (
 	"github.com/DataDog/datadog-trace-agent/model"
 )
 
+const maxMemorySize = uint64(100000000) // 100 MB
+
 type Reservoir struct {
 	slots      []*model.ProcessedTrace
 	traceCount uint64
@@ -51,7 +53,8 @@ func (s *StratifiedReservoir) Shrink() {
 func newStratifiedReservoir() *StratifiedReservoir {
 	return &StratifiedReservoir{
 		reservoirs: make(map[Signature]*Reservoir, 2),
-		newSig:     make(chan Signature, 10),
+		newSig:     make(chan Signature, 20),
+		limit:      maxMemorySize,
 	}
 }
 
@@ -103,8 +106,16 @@ func (s *StratifiedReservoir) FlushReservoir(sig Signature) *Reservoir {
 }
 
 func (s *StratifiedReservoir) RemoveReservoir(sig Signature) {
+	var size uint64
+	s.RLock()
+	reservoir, ok := s.reservoirs[sig]
+	s.RUnlock()
+	if ok {
+		size += atomic.LoadUint64(&reservoir.size)
+	}
 	s.Lock()
 	delete(s.reservoirs, sig)
+	s.size -= size
 	s.Unlock()
 }
 
