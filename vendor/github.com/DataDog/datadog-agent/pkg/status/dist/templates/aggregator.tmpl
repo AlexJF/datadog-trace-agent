@@ -1,33 +1,49 @@
+{{/*
+NOTE: Changes made to this template should be reflected on the following templates, if applicable:
+* cmd/agent/gui/views/templates/generalStatus.tmpl
+*/}}=========
+Aggregator
 =========
-DogStatsD
-=========
-{{- if .ChecksMetricSample}}
-  Checks Metric Sample: {{.ChecksMetricSample}}
-{{- end -}}
-{{- if .Event}}
-  Event: {{.Event}}
-{{- end -}}
-{{- if .EventsFlushed}}
-  Events Flushed: {{.EventsFlushed}}
-{{- end -}}
-{{- if .NumberOfFlush}}
-  Number Of Flushes: {{.NumberOfFlush}}
-{{- end -}}
-{{- if .SeriesFlushed}}
-  Series Flushed: {{.SeriesFlushed}}
-{{- end -}}
-{{- if .ServiceCheck}}
-  Service Check: {{.ServiceCheck}}
-{{- end -}}
-{{- if .ServiceCheckFlushed}}
-  Service Checks Flushed: {{.ServiceCheckFlushed}}
-{{- end -}}
-{{- if .SketchesFlushed}}
-  Sketches Flushed: {{.SketchesFlushed}}
-{{- end -}}
-{{- if .HostnameUpdate}}
-  Hostname Update: {{.HostnameUpdate}}
-{{- end -}}
+{{- if .ChecksMetricSample }}
+  Checks Metric Sample: {{humanize .ChecksMetricSample}}
+{{- end }}
 {{- if .DogstatsdMetricSample}}
-  Dogstatsd Metric Sample: {{.DogstatsdMetricSample}}
-{{- end}}
+  Dogstatsd Metric Sample: {{humanize .DogstatsdMetricSample}}
+{{- end }}
+{{- if .Event}}
+  Event: {{humanize .Event}}
+{{- end }}
+{{- if .EventsFlushed}}
+  Events Flushed: {{humanize .EventsFlushed}}
+{{- end }}
+{{- if .EventsFlushErrors}}
+  Events Flush Errors: {{humanize .EventsFlushErrors}}
+{{- end }}
+{{- if .NumberOfFlush}}
+  Number Of Flushes: {{humanize .NumberOfFlush}}
+{{- end }}
+{{- if .SeriesFlushed}}
+  Series Flushed: {{humanize .SeriesFlushed}}
+{{- end }}
+{{- if .SeriesFlushErrors}}
+  Series Flush Errors: {{humanize .SeriesFlushErrors}}
+{{- end }}
+{{- if .ServiceCheck}}
+  Service Check: {{humanize .ServiceCheck}}
+{{- end }}
+{{- if .ServiceCheckFlushed}}
+  Service Checks Flushed: {{humanize .ServiceCheckFlushed}}
+{{- end }}
+{{- if .ServiceCheckFlushErrors}}
+  Service Checks Flush Errors: {{humanize .ServiceCheckFlushErrors}}
+{{- end }}
+{{- if .SketchesFlushed}}
+  Sketches Flushed: {{humanize .SketchesFlushed}}
+{{- end }}
+{{- if .SketchesFlushErrors}}
+  Sketches Flush Errors: {{humanize .SketchesFlushErrors}}
+{{- end }}
+{{- if .HostnameUpdate}}
+  Hostname Update: {{humanize .HostnameUpdate}}
+{{- end }}
+

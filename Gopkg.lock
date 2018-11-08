@@ -2,11 +2,15 @@
 
 
 [[projects]]
-  digest = "1:2d9a66c13006787fa03583eca722540725586383bc9c3631787e46d9a1cb8afc"
+  digest = "1:349d92689d2fc6ec373b138d03a02b5b2659b640db5e7f1d40cffde135669b52"
   name = "github.com/DataDog/datadog-agent"
-  packages = ["pkg/pidfile"]
+  packages = [
+    "pkg/pidfile",
+    "pkg/util/executable",
+    "pkg/util/winutil",
+  ]
   pruneopts = ""
-  revision = "92733ff01547103d5286afc9e272d501cb18f761"
+  revision = "e958743e3bdd86870adf29c55c4f2095c0fa3008"
 
 [[projects]]
   digest = "1:7a91a175c283b21c6e99edc1b2fb82fe11eb5b42e7a28a2a67b17d9c28ad1855"
@@ -73,6 +77,13 @@
   packages = ["proto"]
   pruneopts = ""
   revision = "1e59b77b52bf8e4b449a57e6f79f21226d571845"
+
+[[projects]]
+  digest = "1:2c5ad58492804c40bdaf5d92039b0cde8b5becd2b7feeb37d7d1cc36a8aa8dbe"
+  name = "github.com/kardianos/osext"
+  packages = ["."]
+  pruneopts = ""
+  revision = "ae77be60afb1dcacde03767a8c37337fad28ac14"
 
 [[projects]]
   digest = "1:210286d0cb60ffe28f1ca00b664029e8943009f95d06d8f8c336301b28e1aee5"
@@ -157,6 +168,8 @@
   analyzer-version = 1
   input-imports = [
     "github.com/DataDog/datadog-agent/pkg/pidfile",
+    "github.com/DataDog/datadog-agent/pkg/util/executable",
+    "github.com/DataDog/datadog-agent/pkg/util/winutil",
     "github.com/DataDog/datadog-go/statsd",
     "github.com/cihub/seelog",
     "github.com/go-ini/ini",
