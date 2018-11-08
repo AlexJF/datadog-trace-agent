@@ -31,20 +31,23 @@ func newReservoir() *Reservoir {
 
 type StratifiedReservoir struct {
 	sync.RWMutex
-	reservoirs map[uint32]*Reservoir
+	reservoirs map[Signature]*Reservoir
+	newSig     chan Signature
 }
 
 func newStratifiedReservoir() *StratifiedReservoir {
 	return &StratifiedReservoir{
-		reservoirs: make(map[uint32]*Reservoir, 2),
+		reservoirs: make(map[Signature]*Reservoir, 2),
+		newSig:     make(chan Signature, 10),
 	}
 }
 
-func (s *StratifiedReservoir) AddToReservoir(sig uint32, trace *model.ProcessedTrace) {
+func (s *StratifiedReservoir) AddToReservoir(sig Signature, trace *model.ProcessedTrace) {
 	s.RLock()
 	reservoir, ok := s.reservoirs[sig]
 	s.RUnlock()
 	if !ok {
+		s.newSig <- sig
 		reservoir = newReservoir()
 		// TODO smart merge to protect against unlimited sigs
 		s.Lock()
@@ -54,7 +57,7 @@ func (s *StratifiedReservoir) AddToReservoir(sig uint32, trace *model.ProcessedT
 	reservoir.Add(trace)
 }
 
-func (s *StratifiedReservoir) FlushReservoir(sig uint32) *Reservoir {
+func (s *StratifiedReservoir) FlushReservoir(sig Signature) *Reservoir {
 	s.RLock()
 	reservoir, ok := s.reservoirs[sig]
 	s.RUnlock()
@@ -75,7 +78,7 @@ func (s *StratifiedReservoir) FlushReservoir(sig uint32) *Reservoir {
 	return reservoir
 }
 
-func (s *StratifiedReservoir) RemoveReservoir(sig uint32) {
+func (s *StratifiedReservoir) RemoveReservoir(sig Signature) {
 	s.Lock()
 	delete(s.reservoirs, sig)
 	s.Unlock()

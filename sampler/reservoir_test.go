@@ -41,7 +41,7 @@ func TestAddFlush(t *testing.T) {
 	assert := assert.New(t)
 	s := newStratifiedReservoir()
 
-	testSig := uint32(10)
+	testSig := Signature(10)
 	testTrace := generateTrace(6)
 	s.AddToReservoir(testSig, testTrace)
 	originalReservoir, _ := s.reservoirs[testSig]
@@ -58,7 +58,7 @@ func TestAddRemoveReservoir(t *testing.T) {
 
 	assert.Equal(0, len(s.reservoirs))
 
-	testSig := uint32(10)
+	testSig := Signature(10)
 	s.AddToReservoir(testSig, generateTrace(5))
 	assert.Equal(1, len(s.reservoirs))
 	s.RemoveReservoir(testSig)
