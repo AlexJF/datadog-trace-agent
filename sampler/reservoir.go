@@ -10,6 +10,8 @@ import (
 type Reservoir struct {
 	slots      []*model.ProcessedTrace
 	traceCount uint64
+	shrinked   bool
+	size       uint64
 }
 
 func (r *Reservoir) Add(trace *model.ProcessedTrace) {
@@ -33,6 +35,17 @@ type StratifiedReservoir struct {
 	sync.RWMutex
 	reservoirs map[Signature]*Reservoir
 	newSig     chan Signature
+	size       uint64
+	limit      uint64
+	shrinked   bool // not thread safe
+}
+
+func (s *StratifiedReservoir) isFull() bool {
+	return atomic.LoadUint64(&s.size) >= atomic.LoadUint64(&s.limit)
+}
+
+func (s *StratifiedReservoir) Shrink() {
+	s.shrinked = true
 }
 
 func newStratifiedReservoir() *StratifiedReservoir {
@@ -43,13 +56,23 @@ func newStratifiedReservoir() *StratifiedReservoir {
 }
 
 func (s *StratifiedReservoir) AddToReservoir(sig Signature, trace *model.ProcessedTrace) {
+	if s.shrinked {
+		sig = Signature(0)
+	}
 	s.RLock()
 	reservoir, ok := s.reservoirs[sig]
 	s.RUnlock()
 	if !ok {
 		s.newSig <- sig
+		if sig != Signature(0) && s.isFull() {
+			s.AddToReservoir(Signature(0), trace)
+			return
+		}
+		traceSize := traceApproximateSize(trace)
 		reservoir = newReservoir()
-		// TODO smart merge to protect against unlimited sigs
+		reservoir.size = traceSize
+		atomic.AddUint64(&s.size, traceSize)
+
 		s.Lock()
 		s.reservoirs[sig] = reservoir
 		s.Unlock()
@@ -71,6 +94,7 @@ func (s *StratifiedReservoir) FlushReservoir(sig Signature) *Reservoir {
 		return nil
 	}
 	newReservoir := newReservoir()
+	newReservoir.size = atomic.LoadUint64(&reservoir.size)
 	s.Lock()
 	reservoir, _ = s.reservoirs[sig]
 	s.reservoirs[sig] = newReservoir
@@ -82,4 +106,22 @@ func (s *StratifiedReservoir) RemoveReservoir(sig Signature) {
 	s.Lock()
 	delete(s.reservoirs, sig)
 	s.Unlock()
+}
+
+func traceApproximateSize(trace *model.ProcessedTrace) uint64 {
+	size := len(trace.Env)
+	for _, span := range trace.Trace {
+		size += 44
+		size += len(span.Service) + len(span.Name) + len(span.Resource)
+		for k, v := range span.Meta {
+			size += len(k) + len(v)
+		}
+		for k := range span.Metrics {
+			size += len(k) + 8
+		}
+		for _, subValue := range trace.Sublayers[span] {
+			size += 8 + len(subValue.Tag.String()) + len(subValue.Metric)
+		}
+	}
+	return uint64(size)
 }
