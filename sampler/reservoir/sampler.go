@@ -25,9 +25,9 @@ func NewSampler(targetFPS float64) *Sampler {
 }
 
 func (s *Sampler) Start(decisionCb func(t *model.ProcessedTrace, sampled bool)) {
-	go s.reportStats()
 	s.flusher.Start(s.stratReservoir, func(t *model.ProcessedTrace) { decisionCb(t, true) })
 	s.stratReservoir.Init(s.flusher, func(t *model.ProcessedTrace) { decisionCb(t, false) })
+	go s.reportStats()
 }
 
 func (s *Sampler) Sample(t *model.ProcessedTrace) {

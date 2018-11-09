@@ -46,7 +46,6 @@ type StratifiedReservoir struct {
 
 	sync.RWMutex
 	reservoirs map[sampler.Signature]*Reservoir
-	newSig     chan sampler.Signature
 	size       uint64
 	limit      uint64
 	shrinked   bool // not thread safe
