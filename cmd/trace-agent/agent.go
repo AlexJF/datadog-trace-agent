@@ -80,7 +80,7 @@ func NewAgent(ctx context.Context, conf *config.AgentConfig) *Agent {
 	rs := reservoir.NewSampler(conf.MaxTPS)
 	se := NewTraceServiceExtractor(serviceChan)
 	sm := NewServiceMapper(serviceChan, filteredServiceChan)
-	tw := writer.NewTraceWriter(conf, tracePkgChan)
+	tw := writer.NewTraceWriter(conf, tracePkgChan, 10)
 	sw := writer.NewStatsWriter(conf, statsChan)
 	svcW := writer.NewServiceWriter(conf, filteredServiceChan)
 

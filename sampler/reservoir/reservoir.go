@@ -27,7 +27,6 @@ func (r *Reservoir) Add(trace *model.ProcessedTrace) (droppedTrace *model.Proces
 	if r.Slots[0].Root.TraceID < trace.Root.TraceID {
 		droppedTrace = r.Slots[0]
 		r.Slots[0] = trace
-
 		return
 	}
 
@@ -93,7 +92,10 @@ func (s *StratifiedReservoir) Add(sig sampler.Signature, trace *model.ProcessedT
 		s.reservoirs[sig] = reservoir
 		s.Unlock()
 	}
-	reservoir.Add(trace)
+	droppedTrace := reservoir.Add(trace)
+	if droppedTrace != nil {
+		s.onDropCb(droppedTrace)
+	}
 }
 
 func (s *StratifiedReservoir) GetAndReset(sig sampler.Signature) *Reservoir {
