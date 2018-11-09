@@ -228,6 +228,8 @@ func (r *HTTPReceiver) handleTraces(v Version, w http.ResponseWriter, req *http.
 		atomic.AddInt64(&ts.TracesBytes, int64(bytesRead))
 	}
 
+	sort.Sort(traces)
+
 	// normalize data
 	for i := range traces {
 		spans := len(traces[i])

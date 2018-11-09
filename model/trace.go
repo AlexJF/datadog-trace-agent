@@ -14,6 +14,20 @@ type Trace []*Span
 // Traces is a list of traces. This model matters as this is what we unpack from msgp.
 type Traces []Trace
 
+func (t Traces) Len() int {
+	return len(t)
+}
+
+func (t Traces) Swap(i, j int) {
+	tmp := t[j]
+	t[j] = t[i]
+	t[i] = tmp
+}
+
+func (t Traces) Less(i, j int) bool {
+	return t[i][0].End() < t[j][0].End()
+}
+
 // GetEnv returns the meta value for the "env" key for
 // the first trace it finds or an empty string
 func (t Trace) GetEnv() string {

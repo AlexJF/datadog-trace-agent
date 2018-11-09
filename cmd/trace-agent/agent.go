@@ -60,7 +60,7 @@ func NewAgent(ctx context.Context, conf *config.AgentConfig) *Agent {
 
 	// inter-component channels
 	rawTraceChan := make(chan model.Trace, 5000) // about 1000 traces/sec for 5 sec, TODO: move to *model.Trace
-	tracePkgChan := make(chan *writer.TracePackage)
+	tracePkgChan := make(chan *writer.TracePackage, 50)
 	statsChan := make(chan []model.StatsBucket)
 	serviceChan := make(chan model.ServicesMetadata, 50)
 	filteredServiceChan := make(chan model.ServicesMetadata, 50)
@@ -75,10 +75,10 @@ func NewAgent(ctx context.Context, conf *config.AgentConfig) *Agent {
 
 	obf := obfuscate.NewObfuscator(conf.Obfuscation)
 	ee := eventExtractorFromConf(conf)
-	rs := reservoir.NewSampler(conf.MaxTPS)
+	rs := reservoir.NewSampler(conf.MaxTPS*0.5, conf.MaxTPS)
 	se := NewTraceServiceExtractor(serviceChan)
 	sm := NewServiceMapper(serviceChan, filteredServiceChan)
-	tw := writer.NewTraceWriter(conf, tracePkgChan, 10)
+	tw := writer.NewTraceWriter(conf, tracePkgChan)
 	sw := writer.NewStatsWriter(conf, statsChan)
 	svcW := writer.NewServiceWriter(conf, filteredServiceChan)
 

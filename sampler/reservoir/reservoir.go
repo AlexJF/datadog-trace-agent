@@ -1,6 +1,7 @@
 package reservoir
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -9,7 +10,7 @@ import (
 	"github.com/DataDog/datadog-trace-agent/sampler"
 )
 
-const maxMemorySize = uint64(100000000) // 100 MB
+const maxMemorySize = uint64(1 * 1024) // 100 MB
 
 type Reservoir struct {
 	Slots       []*model.ProcessedTrace
@@ -51,6 +52,7 @@ type StratifiedReservoir struct {
 	size       uint64
 	limit      uint64
 	shrinked   bool // not thread safe
+	limitOnce  sync.Once
 }
 
 func (s *StratifiedReservoir) GetLatestTime() (latest time.Time) {
@@ -95,6 +97,9 @@ func (s *StratifiedReservoir) Add(sig sampler.Signature, trace *model.ProcessedT
 	s.RUnlock()
 	if !ok {
 		if sig != sampler.Signature(0) && s.isFull() {
+			s.limitOnce.Do(func() {
+				fmt.Println("!!!!!!!!!!!!!! LIMITED !!!!!!!!!!!!!!!!!!!")
+			})
 			s.Add(sampler.Signature(0), trace)
 			return
 		}
@@ -112,6 +117,27 @@ func (s *StratifiedReservoir) Add(sig sampler.Signature, trace *model.ProcessedT
 	if droppedTrace != nil {
 		s.onDropCb(droppedTrace)
 	}
+}
+
+func (s *StratifiedReservoir) PrintReservoirs() {
+	s.RLock()
+	var traceCounts uint64
+	var nonEmptyRes uint64
+	var non0TraceCount uint64
+	for _, res := range s.reservoirs {
+		traceCount := atomic.LoadUint64(&res.TraceCount)
+		traceCounts += traceCount
+		if traceCount > 0 {
+			non0TraceCount++
+		}
+		if res.Slots[0] != nil {
+			nonEmptyRes++
+		}
+	}
+	fmt.Printf("Trace counts: %d\n", traceCounts)
+	fmt.Printf("Non empty reservoirs: %d\n", nonEmptyRes)
+	fmt.Printf("Non zero reservoirs: %d\n", non0TraceCount)
+	s.RUnlock()
 }
 
 func (s *StratifiedReservoir) GetAndReset(sig sampler.Signature) *Reservoir {

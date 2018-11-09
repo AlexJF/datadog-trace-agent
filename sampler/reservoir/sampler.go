@@ -1,6 +1,9 @@
 package reservoir
 
 import (
+	"fmt"
+	"math"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -12,13 +15,16 @@ import (
 type Sampler struct {
 	stratReservoir *StratifiedReservoir
 	flusher        *Flusher
+	minFPS         float64
+	first          time.Time
 }
 
-func NewSampler(targetFPS float64) *Sampler {
-	flusher := NewFlusher(targetFPS, 30*time.Second)
+func NewSampler(minFPS float64, maxFPS float64) *Sampler {
+	flusher := NewFlusher(maxFPS-minFPS, 30*time.Second, int(math.Round(minFPS)))
 	stratReservoir := NewStratifiedReservoir()
 
 	return &Sampler{
+		minFPS:         minFPS,
 		stratReservoir: stratReservoir,
 		flusher:        flusher,
 	}
@@ -32,6 +38,20 @@ func (s *Sampler) Start(decisionCb func(t *model.ProcessedTrace, sampled bool)) 
 
 func (s *Sampler) Sample(t *model.ProcessedTrace) {
 	s.stratReservoir.Add(sig(t), t)
+
+	newTraceTime := time.Unix(0, t.Root.Start+t.Root.Duration)
+	if s.first.IsZero() {
+		s.first = newTraceTime
+	}
+	fmt.Println("%%% " + strconv.FormatInt(newTraceTime.Sub(s.first).Nanoseconds(), 10) + " " + t.Root.Resource[3:])
+
+	oldestTraceInSampler := s.stratReservoir.GetLatestTime()
+	isReset := newTraceTime.Sub(oldestTraceInSampler) < 0
+	isEnoughTimePassed := newTraceTime.Sub(oldestTraceInSampler) >= time.Duration(1./s.minFPS)*time.Second
+
+	if isReset || isEnoughTimePassed {
+		s.flusher.TicketFlush()
+	}
 }
 
 func (s *Sampler) Stop() {
