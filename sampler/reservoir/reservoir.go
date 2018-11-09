@@ -3,6 +3,7 @@ package reservoir
 import (
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/DataDog/datadog-trace-agent/model"
 	"github.com/DataDog/datadog-trace-agent/sampler"
@@ -11,16 +12,18 @@ import (
 const maxMemorySize = uint64(100000000) // 100 MB
 
 type Reservoir struct {
-	Slots      []*model.ProcessedTrace
-	TraceCount uint64
-	shrinked   bool
-	size       uint64
+	Slots       []*model.ProcessedTrace
+	latestTrace time.Time
+	TraceCount  uint64
+	shrinked    bool
+	size        uint64
 }
 
 func (r *Reservoir) Add(trace *model.ProcessedTrace) (droppedTrace *model.ProcessedTrace) {
 	atomic.AddUint64(&r.TraceCount, 1)
 	if r.Slots[0] == nil {
 		r.Slots[0] = trace
+		r.latestTrace = time.Unix(0, trace.Root.Start+trace.Root.Duration)
 		return
 	}
 
@@ -48,6 +51,19 @@ type StratifiedReservoir struct {
 	size       uint64
 	limit      uint64
 	shrinked   bool // not thread safe
+}
+
+func (s *StratifiedReservoir) GetLatestTime() (latest time.Time) {
+	// TODO rewrite quick hack
+	latest = time.Now()
+	s.RLock()
+	for _, res := range s.reservoirs {
+		if res.latestTrace != time.Unix(0, 0) && res.latestTrace.Before(latest) {
+			latest = res.latestTrace
+		}
+	}
+	s.RUnlock()
+	return
 }
 
 func (s *StratifiedReservoir) isFull() bool {
